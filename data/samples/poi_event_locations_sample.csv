@@ -1,0 +1,6 @@
+name,poi_type,address,latitude,longitude,relevance_level,event_relevance,source,notes
+Hallenstadion,event_venue,"Wallisellenstrasse 45, 8050 Zürich",47.4118,8.5519,CRITICAL,major_events,manual,"Konzerte, Sport, Messen"
+Messe Zürich,exhibition_center,"Wallisellenstrasse 49, 8050 Zürich",47.4108,8.5512,HIGH,trade_fairs,manual,Regelmässige Messen
+Stadion Letzigrund,stadium,"Badenerstrasse 500, 8048 Zürich",47.3829,8.5036,CRITICAL,major_events,manual,"FC Zürich + Grossveranstaltungen"
+Swiss Life Arena,sport_venue,"Vulkanstrasse 130, 8048 Zürich",47.3815,8.4945,HIGH,major_events,manual,ZSC Lions Heimstadion
+Zoo Zürich,tourism,"Zürichbergstrasse 221, 8044 Zürich",47.3856,8.5763,HIGH,seasonal_peak,manual,Hohe Wochenend-Frequenz

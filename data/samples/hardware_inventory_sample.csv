@@ -1,0 +1,11 @@
+stop_name,municipality,sloid,zvv_stop_id,vbz_stop_id,has_dfi_standalone,has_dfi_on_power_pole,has_ticket_machine,has_power,has_shelter,notes
+"Zürich, Messe/Hallenstadion",Zürich,ch:1:sloid:8591342,ZVV-MSE,VBZ-211,yes,no,yes,yes,yes,"Knotenpunkt, gut ausgestattet"
+"Zürich, Letzigrund",Zürich,ch:1:sloid:8591246,ZVV-LZG,VBZ-156,yes,no,yes,yes,yes,Eventstandort
+"Zürich, Bellevue",Zürich,ch:1:sloid:8591105,ZVV-BLV,VBZ-014,ja,nein,ja,ja,ja,Zentraler Knoten
+"Zürich, Bürkliplatz",Zürich,ch:1:sloid:8591134,ZVV-BKP,VBZ-019,no,yes,yes,yes,no,Quaiquartier
+"Zürich, Hardplatz",Zürich,ch:1:sloid:8591216,ZVV-HRP,VBZ-104,unknown,unknown,yes,yes,yes,
+"Zürich, Zoo",Zürich,ch:1:sloid:8591382,ZVV-ZOO,VBZ-241,nein,ja,ja,ja,ja,"Tourismus, saisonal"
+"Zürich, Albisriederplatz",Zürich,ch:1:sloid:8591071,,VBZ-006,no,yes,unbekannt,yes,yes,
+"Zürich, Käppeli",Zürich,ch:1:sloid:8591226,ZVV-KPP,VBZ-127,no,no,no,no,yes,Kleine Haltestelle
+"Zürich, Vulkanplatz",Zürich,ch:1:sloid:8591363,ZVV-VKP,VBZ-228,yes,no,yes,yes,yes,Nähe Swiss Life Arena
+"Zürich, Heuried",Zürich,ch:1:sloid:8591223,ZVV-HEU,,nein,nein,nein,nein,ja,

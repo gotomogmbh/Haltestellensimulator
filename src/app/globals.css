@@ -75,3 +75,121 @@ p {
   color: #6a6a6a;
   background: #ffffff;
 }
+
+.section-h {
+  margin-top: 2rem;
+  font-size: 1.1rem;
+  letter-spacing: -0.01em;
+}
+
+.muted {
+  color: #8a8a8a;
+}
+
+.upload-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding: 1.25rem;
+  background: #ffffff;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  max-width: 540px;
+}
+
+.upload-form .field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.upload-form .field > span {
+  color: #4a4a4a;
+}
+
+.upload-form select,
+.upload-form input[type="file"] {
+  padding: 0.5rem;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  background: #fafafa;
+  font: inherit;
+}
+
+.upload-form button {
+  align-self: flex-start;
+  padding: 0.55rem 1.1rem;
+  font: inherit;
+  font-weight: 500;
+  color: #ffffff;
+  background: #1a1a1a;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.upload-form button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.msg {
+  margin-top: 0.25rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.msg-ok {
+  background: #e8f5e9;
+  color: #1b5e20;
+}
+
+.msg-err {
+  background: #ffebee;
+  color: #b71c1c;
+}
+
+.data-table {
+  width: 100%;
+  margin-top: 0.75rem;
+  border-collapse: collapse;
+  background: #ffffff;
+  font-size: 0.9rem;
+}
+
+.data-table th,
+.data-table td {
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid #eeeeee;
+  text-align: left;
+  vertical-align: top;
+}
+
+.data-table th {
+  font-weight: 500;
+  color: #4a4a4a;
+  background: #fafafa;
+}
+
+.data-table code {
+  font-size: 0.82rem;
+  color: #4a4a4a;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.status-uploaded { background: #eef2ff; color: #1e3a8a; }
+.status-processing { background: #fef3c7; color: #92400e; }
+.status-completed { background: #dcfce7; color: #14532d; }
+.status-failed { background: #fee2e2; color: #991b1b; }
+.status-needs-review { background: #fef9c3; color: #713f12; }
