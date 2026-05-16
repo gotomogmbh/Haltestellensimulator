@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
 import type { StorageAdapter, StorageKind, StoredFile } from "./adapter";
 
@@ -12,7 +12,13 @@ const KIND_TO_SUBDIR: Record<StorageKind, string> = {
 };
 
 function sanitize(filename: string): string {
-  return filename.replace(/[^\w.\-]+/g, "_").slice(0, 120) || "file";
+  // basename strips directory traversals like "../" before we ever write.
+  const base = basename(filename);
+  const cleaned = base
+    .replace(/[^\w.\-]+/g, "_")
+    .replace(/^[._]+/, "")
+    .slice(0, 120);
+  return cleaned || "file";
 }
 
 export class LocalFsStorageAdapter implements StorageAdapter {
