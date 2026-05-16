@@ -1,0 +1,335 @@
+// Prisma schema — Haltestellensimulator
+//
+// Hinweise:
+// - Koordinaten werden im MVP als latitude/longitude (Float, WGS84) gespeichert.
+//   PostGIS-Geometry-Columns werden später ergänzt; die Extension ist bereits
+//   in der DB aktiv (siehe `extensions = [postgis]`).
+// - Import-Historie und Fehler sind über ImportFile/ImportRun/ImportError
+//   vollständig nachvollziehbar.
+// - Hardware-Inventar pro Site ist 1:1 und über die Indexe filterbar.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis]
+}
+
+// ============================================================
+// Enums
+// ============================================================
+
+enum YesNoUnknown {
+  YES
+  NO
+  UNKNOWN
+}
+
+enum ElementSize {
+  S
+  M
+  L
+  XL
+  XXL
+}
+
+enum HardwareIntegrationClass {
+  A_REUSE_DFI_STANDALONE
+  B_REUSE_DFI_POLE
+  C_REUSE_TICKET_MACHINE
+  D_REUSE_SHELTER
+  E_POWER_AVAILABLE_NEW_MOUNT
+  F_NO_HARDWARE
+  G_UNKNOWN
+}
+
+enum ImportStatus {
+  UPLOADED
+  PROCESSING
+  COMPLETED
+  FAILED
+  NEEDS_REVIEW
+}
+
+enum ImportType {
+  GTFS_STATIC
+  HARDWARE_INVENTORY
+  POI_EVENT_LOCATIONS
+  PASSENGER_COUNTS
+  MANUAL_SITE_ATTRIBUTES
+  OTHER
+}
+
+enum OperatorArea {
+  VBZ
+  ZVV
+  MIXED
+  UNKNOWN
+}
+
+enum PoiRelevance {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// ============================================================
+// Sites & Linien
+// ============================================================
+
+model Site {
+  id                String                 @id @default(cuid())
+  name              String
+  municipality      String?
+  didokNumber       String?                @unique
+  operatorArea      OperatorArea           @default(UNKNOWN)
+  latitude          Float
+  longitude         Float
+  notes             String?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  boardingPoints    BoardingPoint[]
+  lineAssignments   SiteLineAssignment[]
+  hardwareInventory SiteHardwareInventory?
+  poiRelations      SitePoiRelation[]
+  recommendations   Recommendation[]
+
+  @@index([operatorArea])
+  @@index([name])
+}
+
+model BoardingPoint {
+  id          String   @id @default(cuid())
+  siteId      String
+  site        Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  name        String?
+  gtfsStopId  String?  @unique
+  didokNumber String?
+  direction   String?
+  latitude    Float
+  longitude   Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([siteId])
+}
+
+model TransitLine {
+  id              String               @id @default(cuid())
+  shortName       String
+  longName        String?
+  mode            String?
+  agencyId        String?
+  gtfsRouteId     String?              @unique
+  color           String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  siteAssignments SiteLineAssignment[]
+
+  @@index([shortName])
+}
+
+model SiteLineAssignment {
+  id                 String      @id @default(cuid())
+  siteId             String
+  site               Site        @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  lineId             String
+  line               TransitLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  weekdayDepartures  Int?
+  peakHourDepartures Int?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  @@unique([siteId, lineId])
+  @@index([lineId])
+}
+
+// ============================================================
+// Hardware-Inventar (1:1 mit Site)
+// ============================================================
+
+model SiteHardwareInventory {
+  id                 String       @id @default(cuid())
+  siteId             String       @unique
+  site               Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  dfiStandfuss       YesNoUnknown @default(UNKNOWN)
+  dfiStrommast       YesNoUnknown @default(UNKNOWN)
+  ticketautomat      YesNoUnknown @default(UNKNOWN)
+  strom              YesNoUnknown @default(UNKNOWN)
+  wartehaus          YesNoUnknown @default(UNKNOWN)
+
+  notes              String?
+  recordedAt         DateTime?
+
+  sourceImportFileId String?
+  sourceImportFile   ImportFile?  @relation(fields: [sourceImportFileId], references: [id])
+
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@index([dfiStandfuss])
+  @@index([dfiStrommast])
+  @@index([ticketautomat])
+  @@index([strom])
+  @@index([wartehaus])
+}
+
+// ============================================================
+// POIs / Event-Locations
+// ============================================================
+
+model PointOfInterest {
+  id                 String            @id @default(cuid())
+  name               String
+  category           String?
+  relevance          PoiRelevance      @default(MEDIUM)
+  latitude           Float
+  longitude          Float
+  address            String?
+  validFrom          DateTime?
+  validTo            DateTime?
+
+  sourceImportFileId String?
+  sourceImportFile   ImportFile?       @relation(fields: [sourceImportFileId], references: [id])
+
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  siteRelations      SitePoiRelation[]
+
+  @@index([relevance])
+  @@index([category])
+}
+
+model SitePoiRelation {
+  id             String          @id @default(cuid())
+  siteId         String
+  site           Site            @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  poiId          String
+  poi            PointOfInterest @relation(fields: [poiId], references: [id], onDelete: Cascade)
+  distanceMeters Float
+  computedAt     DateTime        @default(now())
+
+  @@unique([siteId, poiId])
+  @@index([poiId])
+  @@index([distanceMeters])
+}
+
+// ============================================================
+// Import-Pipeline (File → Run → Errors / Mappings)
+// ============================================================
+
+model ImportFile {
+  id               String                  @id @default(cuid())
+  importType       ImportType
+  originalFilename String
+  storedPath       String
+  mimeType         String?
+  sizeBytes        Int
+  contentHash      String                  @unique
+  uploadedAt       DateTime                @default(now())
+  uploadedBy       String?
+
+  runs             ImportRun[]
+  inventoryRecords SiteHardwareInventory[]
+  pois             PointOfInterest[]
+
+  @@index([importType])
+  @@index([uploadedAt])
+}
+
+model ImportRun {
+  id           String          @id @default(cuid())
+  fileId       String
+  file         ImportFile      @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  status       ImportStatus    @default(UPLOADED)
+  startedAt    DateTime        @default(now())
+  finishedAt   DateTime?
+  rowsTotal    Int?
+  rowsAccepted Int?
+  rowsRejected Int?
+  summary      Json?
+
+  errors       ImportError[]
+  mappings     ImportMapping[]
+
+  @@index([fileId])
+  @@index([status])
+}
+
+model ImportError {
+  id        String    @id @default(cuid())
+  runId     String
+  run       ImportRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  rowNumber Int?
+  field     String?
+  reason    String
+  rawValue  String?
+  createdAt DateTime  @default(now())
+
+  @@index([runId])
+}
+
+model ImportMapping {
+  id           String    @id @default(cuid())
+  runId        String
+  run          ImportRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  sourceColumn String
+  targetField  String
+  transform    String?
+  createdAt    DateTime  @default(now())
+
+  @@unique([runId, sourceColumn])
+}
+
+// ============================================================
+// Empfehlungen (Scoring)
+// ============================================================
+
+model ScoringRun {
+  id              String           @id @default(cuid())
+  ruleVersion     String
+  startedAt       DateTime         @default(now())
+  finishedAt      DateTime?
+  siteCount       Int?
+  triggeredBy     String?
+  parameters      Json?
+
+  recommendations Recommendation[]
+
+  @@index([ruleVersion])
+  @@index([startedAt])
+}
+
+model Recommendation {
+  id             String                   @id @default(cuid())
+  siteId         String
+  site           Site                     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  scoringRunId   String
+  scoringRun     ScoringRun               @relation(fields: [scoringRunId], references: [id], onDelete: Cascade)
+
+  elementSize    ElementSize
+  elementCount   Int
+  hardwareClass  HardwareIntegrationClass
+
+  reasoning      String[]
+  scoreBreakdown Json
+  confidence     Float
+  inputsSnapshot Json
+  ruleVersion    String
+
+  computedAt     DateTime                 @default(now())
+
+  @@index([siteId, computedAt(sort: Desc)])
+  @@index([hardwareClass])
+  @@index([elementSize])
+  @@index([scoringRunId])
+}
