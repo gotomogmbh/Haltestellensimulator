@@ -17,12 +17,11 @@ Architekturentscheidung: **Kein Google Maps, kein Mapbox als Kernabhängigkeit.*
 
 ### 1. Karten-Hintergrund — MVP
 
-- **Tile-Quelle**: `https://tile.openstreetmap.org/{z}/{x}/{y}.png` (Default, dev).
-- **Attribution Pflicht**: `© OpenStreetMap contributors` in der UI sichtbar.
-- **Library**: Leaflet oder MapLibre GL — Entscheidung in `mvp-roadmap.md` Phase 4.
-- **Caveat**: Die offiziellen OSM-Tiles sind **nicht für Produktion mit hohem Traffic** zugelassen ([Tile Usage Policy](https://operations.osmfoundation.org/policies/tiles/)). Vor Produktiv-Rollout entweder:
-  - eigene Tile-Server-Instanz (osm.org-Stack oder vector tiles via Tileserver-GL), oder
-  - kostenpflichtiger Tile-Provider auf OSM-Basis.
+- **Library**: **MapLibre GL** (Entscheidung dokumentiert in `architecture.md`).
+- **Tile-Quelle**: **OpenFreeMap** Vector Tiles, OSM-basiert, kostenfrei, kein API-Key — `MAP_STYLE_URL=https://tiles.openfreemap.org/styles/liberty` in `.env`.
+- **Attribution Pflicht**: `© OpenStreetMap contributors, © OpenFreeMap` persistent in der Map-Komponente.
+- **Migrationspfad** (falls OpenFreeMap nicht reicht): MapTiler (kostenpflichtig) oder selbst gehostete `pmtiles`. Beides bleibt MapLibre-kompatibel — kein Library-Wechsel nötig.
+- **Hinweis**: Raster-Tiles von `tile.openstreetmap.org` werden nicht verwendet (Tile Usage Policy umgangen). Falls für Spezialfälle nötig, ginge das mit MapLibre + Raster-Source.
 
 ### 2. Geocoding (Adresse → Koordinaten) — Backlog, optional
 
@@ -62,7 +61,7 @@ Architekturentscheidung: **Kein Google Maps, kein Mapbox als Kernabhängigkeit.*
 ```
 ┌─────────────┐
 │   Browser   │
-│  (Karte)    │◄────── Tiles ──── tile.openstreetmap.org  (MVP)
+│  (MapLibre) │◄────── Vector Tiles ──── tiles.openfreemap.org  (MVP)
 └─────────────┘
         │
         │  (Einzelner manueller Klick)
@@ -88,12 +87,12 @@ In der UI muss sichtbar sein:
 
 ---
 
-## Migrationspfad (wenn OSM-Tiles nicht reichen)
+## Migrationspfad (wenn OpenFreeMap nicht reicht)
 
-Falls die offiziellen Tiles für Produktion gesperrt sind:
+OpenFreeMap garantiert keinen kommerziellen SLA. Falls in Produktion mehr Stabilität / Last nötig wird:
 
-1. **MapTiler / Stadia / Thunderforest** als OSM-basierten Tile-Provider einbinden (kostenpflichtig, aber kein Lock-in — Daten bleiben OSM).
-2. Alternativ: **eigene Tile-Instanz** (z. B. via Docker, mit regelmässigem OSM-Planet-Import). Aufwändiger, aber volle Kontrolle.
-3. **Vector Tiles** (MapLibre + selbst gehostete `.pmtiles`) — best of both worlds, etwas mehr Setup.
+1. **MapTiler** als OSM-basierten Vector-Tile-Provider (kostenpflichtig, kein Lock-in — Style bleibt MapLibre-kompatibel).
+2. **Selbst gehostete `pmtiles`** — Datei wird einmal aus OSM gebaut, statisch ausgeliefert. Best of both worlds, etwas mehr Setup.
+3. **Eigene Tileserver-GL-Instanz** mit regelmässigem OSM-Planet-Import — volle Kontrolle, höchster Aufwand.
 
-Entscheidung erst, wenn echte Last-Zahlen vorliegen.
+In jedem Fall bleibt **MapLibre GL als Library** — kein Frontend-Refactor nötig. Entscheidung erst, wenn echte Last-Zahlen vorliegen.

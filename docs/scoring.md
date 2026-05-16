@@ -1,135 +1,143 @@
 # Scoring — Empfehlungslogik
 
-Definiert, **wie** der Haltestellensimulator pro Haltestelle eine Empfehlung berechnet.
+Definiert, **wie** der Haltestellensimulator pro `Site` eine `Recommendation` berechnet.
 
-Stand: **Entwurf v0** — Schwellwerte und Gewichte sind erste Vorschläge und werden in Phase 3 mit ZVV/VBZ kalibriert.
+Stand: **Entwurf v0** — Schwellwerte und Gewichte sind erste Vorschläge und werden mit VBZ/ZVV kalibriert.
 
 ## Designprinzipien
 
 1. **Deterministisch** — gleicher Input → gleiches Ergebnis. Keine ML-Blackbox im MVP.
-2. **Erklärbar** — jede Empfehlung enthält `reasoning[]` (Mensch lesbar) und `score_breakdown` (Komponenten).
-3. **Versioniert** — jede Empfehlung trägt `rule_version` (z. B. `scoring@0.3.0`); ältere Empfehlungen bleiben reproduzierbar.
-4. **`unknown` respektieren** — fehlende Daten ziehen Confidence runter, defaulten nicht zu `no`.
-5. **POI-Relevanz fliesst ein** — eine Haltestelle bei einer grossen Event-Location bekommt einen höheren Anzahl-Vorschlag.
+2. **Erklärbar** — jede Empfehlung enthält `reasoning[]` (Mensch lesbar) und `scoreBreakdown` (Komponenten).
+3. **Versioniert** — jede Empfehlung trägt `ruleVersion` (z. B. `scoring@0.3.0`); ältere Empfehlungen bleiben reproduzierbar.
+4. **`UNKNOWN` respektieren** — fehlende Daten ziehen Confidence runter, defaulten nicht zu `NO`.
+5. **POI-Relevanz fliesst ein** — eine Site bei einer kritischen Event-Location bekommt einen höheren Anzahl-Vorschlag.
+6. **Lauf-getrieben** — jede Berechnung gehört zu einem `ScoringRun`; Inputs werden in `inputsSnapshot` eingefroren.
 
 ---
 
-## Outputs (siehe `data-model.md` → `Recommendation`)
+## Output (siehe `data-model.md` → `Recommendation`)
 
 ```ts
 type Recommendation = {
-  element_size: "S" | "M" | "L" | "XL" | "XXL";
-  element_count: number;            // ≥ 0
-  hardware_class: HardwareClass;    // A_… | … | G_UNKNOWN
-  reasoning: string[];              // Bullet-Liste auf Deutsch
-  score_breakdown: {
-    frequency: number;              // 0..1
-    poi_relevance: number;          // 0..1
-    infrastructure: number;         // 0..1
-    operator_weight: number;        // 0..1, ggf. ZVV/VBZ-spezifisch
-    raw_total: number;              // ungewichtete Summe
-    weighted_total: number;         // mit Gewichten verrechnet
+  siteId: string;
+  scoringRunId: string;
+  elementSize: "S" | "M" | "L" | "XL" | "XXL";
+  elementCount: number;                       // ≥ 0
+  hardwareClass: HardwareIntegrationClass;    // A_… | … | G_UNKNOWN
+  reasoning: string[];                        // deutsche Bullets
+  scoreBreakdown: {
+    frequency: number;                        // 0..1
+    poiRelevance: number;                     // 0..1
+    infrastructure: number;                   // 0..1
+    rawTotal: number;
+    weightedTotal: number;
   };
-  confidence: number;               // 0..1
-  rule_version: string;             // z. B. "scoring@0.3.0"
+  confidence: number;                         // 0..1
+  inputsSnapshot: unknown;
+  ruleVersion: string;                        // z. B. "scoring@0.3.0"
 };
 ```
 
 ---
 
-## 1. Elementgrösse (S / M / L / XL / XXL)
+## Inputs
 
-Bestimmt durch **Frequenz** (GTFS) mit Modifikator durch **POI-Relevanz**.
+Pro `Site` werden gelesen:
+
+| Quelle | Felder |
+|---|---|
+| `SiteHardwareInventory` | `dfiStandfuss`, `dfiStrommast`, `ticketautomat`, `strom`, `wartehaus` (je `YesNoUnknown`) |
+| `SiteLineAssignment` (Aggregat) | Summe `weekdayDepartures` über alle Linien; `served_routes_count` = Anzahl Zuordnungen |
+| `SitePoiRelation` + `PointOfInterest` | POIs im 300-m-Radius mit ihrer `relevance` (Enum) und ggf. `validFrom/validTo` |
+
+POI-Relevanz wird zur Score-Berechnung **numerisch gewichtet**:
+
+| `PoiRelevance` | Gewicht |
+|---|---|
+| `LOW` | 0.25 |
+| `MEDIUM` | 0.5 |
+| `HIGH` | 1.0 |
+| `CRITICAL` | 2.0 |
+
+Daraus ergibt sich `poiRelevanceSum = Σ Gewicht(relevance)` über POIs im Radius.
+
+---
+
+## 1. Elementgrösse (`elementSize`)
+
+Bestimmt durch **Frequenz** (Summe der Werktagsabfahrten) mit Modifikatoren.
 
 ### Basis: Tägliche Abfahrten
 
-| Tägl. Abfahrten | Basis-Grösse |
+| `weekdayDeparturesSum` | Basis-Grösse |
 |---|---|
-| < 50 | S |
-| 50–199 | M |
-| 200–499 | L |
-| 500–999 | XL |
-| ≥ 1000 | XXL |
+| < 50 | `S` |
+| 50–199 | `M` |
+| 200–499 | `L` |
+| 500–999 | `XL` |
+| ≥ 1000 | `XXL` |
 
 ### Modifikator durch POI-Relevanz
 
-- `relevance_sum_300m ≥ 5.0` → eine Stufe **hoch** (max XXL).
-- `relevance_sum_300m ≥ 10.0` → zwei Stufen **hoch**.
-- Event-aktiv (mind. ein POI mit `valid_from ≤ heute ≤ valid_to`) → eine zusätzliche Stufe **hoch** (temporär, mit Hinweis in `reasoning[]`).
+- `poiRelevanceSum ≥ 3.0` → eine Stufe **hoch** (max `XXL`).
+- `poiRelevanceSum ≥ 6.0` → zwei Stufen **hoch**.
+- Event-aktiv (mind. ein POI mit `validFrom ≤ heute ≤ validTo`) → zusätzlich eine Stufe **hoch**, temporär; in `reasoning[]` als "Event-Boost" benannt.
 
 ### Modifikator durch Wartehaus
 
-- Kein Wartehaus (`wartehaus = no`) und Grundgrösse ≥ XL → **eine Stufe runter** (begründet: ohne Wartefläche keine grossen statischen Tafeln sinnvoll).
-- Wartehaus = `unknown` → keine Anpassung, aber Confidence-Abzug.
+- `wartehaus = NO` und Basisgrösse ≥ `XL` → **eine Stufe runter** (ohne Wartefläche keine grossen statischen Tafeln sinnvoll).
+- `wartehaus = UNKNOWN` → keine Anpassung, aber Confidence-Abzug.
 
 ---
 
-## 2. Anzahl Elemente
-
-Heuristik:
+## 2. Anzahl Elemente (`elementCount`)
 
 | Bedingung | Empfohlene Anzahl |
 |---|---|
-| Grösse S | 1 |
-| Grösse M | 1 |
-| Grösse L | 1–2 (2 wenn `served_routes ≥ 3`) |
-| Grösse XL | 2 |
-| Grösse XXL | 2–3 (3 wenn `served_routes ≥ 5` ODER Event-aktiv) |
+| `S` | 1 |
+| `M` | 1 |
+| `L` | 1–2 (2 wenn `served_routes_count ≥ 3`) |
+| `XL` | 2 |
+| `XXL` | 2–3 (3 wenn `served_routes_count ≥ 5` ODER Event-aktiv) |
 
 Sonderfälle:
-- Haltestelle mit getrennten Richtungen (gegenüberliegende Steige) zählt als **2 Stops** — je separat berechnet.
-- POI-Hotspot (`relevance_sum_300m ≥ 10.0`) → +1, max 4.
+- Eine Site mit getrennten Steigen (mehrere `BoardingPoint`s in gegensätzlichen Richtungen) wird **je Steig** berechnet, dann auf Site-Ebene summiert.
+- POI-Hotspot (`poiRelevanceSum ≥ 6.0`) → `+1`, max 4.
 
 ---
 
-## 3. Hardware-Integrationsklasse
+## 3. Hardware-Integrationsklasse (`hardwareClass`)
 
 Bestimmt durch die fünf Pflicht-Flags. Erste passende Regel gewinnt.
 
 ```
-Input: dfi_standfuss, dfi_strommast, ticketautomat, strom, wartehaus  ∈ {yes, no, unknown}
+Input: dfiStandfuss, dfiStrommast, ticketautomat, strom, wartehaus  ∈ {YES, NO, UNKNOWN}
 
-Wenn ALLE fünf Flags == unknown:
+Wenn ALLE fünf Flags == UNKNOWN:
   → G_UNKNOWN
   → reasoning: "Datenlage unzureichend: alle Pflichtmerkmale unbekannt."
 
 Sonst, in dieser Reihenfolge:
 
-1. dfi_standfuss == yes
-   → A_REUSE_DFI_STANDALONE
-
-2. dfi_strommast == yes
-   → B_REUSE_DFI_POLE
-
-3. ticketautomat == yes
-   → C_REUSE_TICKET_MACHINE
-
-4. wartehaus == yes
-   → D_REUSE_SHELTER
-
-5. strom == yes
-   → E_POWER_AVAILABLE_NEW_MOUNT
-
-6. strom == no UND wartehaus == no
-   → F_NO_HARDWARE
-
-7. Sonst (zu viele unknown):
-   → G_UNKNOWN  (mit reasoning, welche Flags fehlen)
+1. dfiStandfuss  == YES  → A_REUSE_DFI_STANDALONE
+2. dfiStrommast  == YES  → B_REUSE_DFI_POLE
+3. ticketautomat == YES  → C_REUSE_TICKET_MACHINE
+4. wartehaus     == YES  → D_REUSE_SHELTER
+5. strom         == YES  → E_POWER_AVAILABLE_NEW_MOUNT
+6. strom == NO  AND wartehaus == NO  → F_NO_HARDWARE
+7. sonst (zu viele UNKNOWN, kein YES)  → G_UNKNOWN
 ```
 
-Wenn das Ergebnis `G_UNKNOWN` ist, muss `reasoning[]` explizit auflisten, **welche** Flags `unknown` sind.
+Wenn `G_UNKNOWN` zurückgegeben wird, muss `reasoning[]` explizit benennen, **welche** Flags `UNKNOWN` sind.
 
 ---
 
-## 4. Score-Aufteilung
+## 4. Score-Aufteilung (`scoreBreakdown`)
 
 ```
-score_breakdown = {
-  frequency:      f_freq(daily_departures)        ∈ [0, 1]
-  poi_relevance:  f_poi(relevance_sum_300m, events) ∈ [0, 1]
-  infrastructure: f_infra(flags)                  ∈ [0, 1]
-  operator_weight: f_operator(operator)           ∈ [0, 1]
-}
+frequency      = f_freq(weekdayDeparturesSum)                ∈ [0, 1]
+poiRelevance   = f_poi(poiRelevanceSum, eventsActive)        ∈ [0, 1]
+infrastructure = f_infra(hardwareInventory)                  ∈ [0, 1]
 ```
 
 ### Frequenz-Funktion
@@ -141,55 +149,51 @@ f_freq(d) = min(1.0, log10(max(d, 1)) / 3.0)    // 1000 Abfahrten → ~1.0
 ### POI-Relevanz-Funktion
 
 ```
-f_poi(sum, events_active) = min(1.0, sum / 10.0) + (0.1 if events_active else 0)
-                           , dann auf [0,1] geklemmt
+f_poi(sum, eventsActive) = clamp(0, 1, sum / 6.0 + (eventsActive ? 0.1 : 0))
 ```
 
 ### Infrastruktur-Funktion
 
-Jeder bekannte `yes`-Wert zählt nach Gewicht:
+Jeder bekannte `YES`-Wert zählt nach Gewicht:
 
 | Flag | Gewicht |
 |---|---|
-| `dfi_standfuss` = yes | 0.30 |
-| `dfi_strommast` = yes | 0.20 |
-| `wartehaus` = yes | 0.20 |
-| `strom` = yes | 0.20 |
-| `ticketautomat` = yes | 0.10 |
+| `dfiStandfuss = YES` | 0.30 |
+| `dfiStrommast = YES` | 0.20 |
+| `wartehaus = YES` | 0.20 |
+| `strom = YES` | 0.20 |
+| `ticketautomat = YES` | 0.10 |
 
-`f_infra` = Summe der Gewichte (max 1.0). `unknown` und `no` zählen 0.
-
-### Operator-Gewicht (Platzhalter)
-
-Default `1.0` — falls ZVV vs VBZ unterschiedlich gewichtet werden soll, hier anpassen.
+`infrastructure` = Summe der Gewichte (max 1.0). `UNKNOWN` und `NO` zählen 0.
 
 ### Weighted Total
 
 ```
-weighted_total = 0.45 * frequency
-               + 0.25 * poi_relevance
-               + 0.20 * infrastructure
-               + 0.10 * operator_weight
+weightedTotal = 0.50 * frequency
+              + 0.30 * poiRelevance
+              + 0.20 * infrastructure
 ```
 
-`weighted_total` ist primär **für interne Sortierung / Filter**, nicht für die Endempfehlung — Grösse und HW-Klasse haben eigene Regeln (oben).
+`weightedTotal` dient primär als interne Sortier-/Filtergrösse, nicht als Endempfehlung — `elementSize` und `hardwareClass` haben eigene Regeln (oben).
+
+Hinweis: `OperatorArea` fliesst aktuell **nicht** in den Score ein (im MVP nur `VBZ` aktiv). Falls später unterschiedliche Gewichtung je Betreiber-Gebiet gewünscht ist, hier ergänzen.
 
 ---
 
 ## 5. Confidence
 
 ```
-known_flags = Anzahl Flags mit Wert ≠ unknown   (0..5)
+knownFlags = Anzahl Flags mit Wert ≠ UNKNOWN   (0..5)
 
-confidence_base = known_flags / 5.0
+confidenceBase = knownFlags / 5.0
 
 Abzüge:
-- needs_manual_match (kein GTFS-Match): -0.20
-- POI-Daten älter als 12 Monate: -0.10
-- GTFS älter als 90 Tage: -0.10
-- Excel-Import älter als 12 Monate: -0.10
+- ImportRun.status == NEEDS_REVIEW (kein sicheres Site-Match):     -0.20
+- POI-Daten älter als 12 Monate:                                   -0.10
+- GTFS älter als 90 Tage:                                          -0.10
+- Hardware-Inventar älter als 12 Monate:                           -0.10
 
-confidence = max(0.0, min(1.0, confidence_base - Σ Abzüge))
+confidence = clamp(0.0, 1.0, confidenceBase - Σ Abzüge)
 ```
 
 ### Confidence-Schwellen für UI
@@ -200,7 +204,7 @@ confidence = max(0.0, min(1.0, confidence_base - Σ Abzüge))
 | 0.5–0.79 | Mittel | gelb |
 | < 0.5 | Niedrig | rot |
 
-Empfehlungen mit Confidence < 0.3 werden in der UI mit Hinweis "Datenlage zu schwach für belastbare Empfehlung" markiert.
+Empfehlungen mit Confidence < 0.3 erhalten in der UI den Hinweis "Datenlage zu schwach für belastbare Empfehlung".
 
 ---
 
@@ -211,25 +215,25 @@ Strukturierte Bullets, jeweils mit Grund + Beleg:
 ```
 [
   "Empfohlene Grösse L: 312 Abfahrten/Tag (Schwelle 200).",
-  "POI-Relevanz im 300-m-Radius: 6.4 — eine Grössenstufe hoch.",
-  "Hardware-Klasse A: DFI mit Standfuss bereits vorhanden.",
-  "Confidence 0.80: 5/5 Pflichtmerkmale bekannt, GTFS aktuell.",
+  "POI-Relevanz im 300-m-Radius: 4.0 (CRITICAL + 2 × HIGH) → eine Grössenstufe hoch.",
+  "Hardware-Klasse A_REUSE_DFI_STANDALONE: DFI mit Standfuss bereits vorhanden.",
+  "Confidence 0.80: 5/5 Pflichtmerkmale bekannt, GTFS aktuell."
 ]
 ```
 
 Regeln:
-- Mindestens **eine Begründung pro Output-Feld** (Grösse, Anzahl, HW-Klasse, Confidence).
-- Schwellwerte / Zahlen im Text mit nennen, damit Planer:innen den Rechenweg sehen.
+- Mindestens **ein Bullet pro Output-Feld** (Grösse, Anzahl, Hardware-Klasse, Confidence).
+- Schwellwerte und Zahlen mitschreiben — Planer:innen sollen den Rechenweg sehen.
 - Bei Confidence < 0.5: explizite Auflistung der fehlenden / unsicheren Inputs.
 
 ---
 
 ## Versionierung
 
-Jede Änderung an Schwellen, Gewichten oder Regeln bumpt `rule_version`:
+Jede Änderung an Schwellen, Gewichten oder Regeln bumpt `ruleVersion`:
 
 - Patch (`0.3.x`): Schwellwerte verschoben, Texte angepasst.
 - Minor (`0.x.0`): neue Faktoren, neue Reasoning-Zeilen.
-- Major (`x.0.0`): inkompatible Strukturänderung an `Recommendation`.
+- Major (`x.0.0`): inkompatible Strukturänderung an `Recommendation` (z. B. neue Pflichtfelder).
 
-Alte `Recommendation`-Snapshots bleiben mit ihrer `rule_version` reproduzierbar — `inputs_snapshot` ist Pflichtfeld (siehe `data-model.md`).
+Alte `Recommendation`-Snapshots bleiben mit ihrer `ruleVersion` reproduzierbar — `inputsSnapshot` ist Pflichtfeld und friert die Inputs zur Berechnungszeit ein.

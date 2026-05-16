@@ -2,9 +2,15 @@
 
 ## Vision
 
-Eine Web-App, die Planer:innen bei ZVV / VBZ befähigt, **datengestützt und nachvollziehbar** zu entscheiden, welche modularen Fahrgastinformations-(FGI-)Elemente an welcher Haltestelle sinnvoll sind.
+Eine Web-App, die Planer:innen befähigt, **datengestützt und nachvollziehbar** zu entscheiden, welche modularen Fahrgastinformations-(FGI-)Elemente an welcher Haltestelle sinnvoll sind.
 
 Statt Bauchgefühl oder Excel-Tabellen: pro Haltestelle eine **begründete Empfehlung** mit Score-Aufteilung und Confidence.
+
+## Stakeholder & Owner
+
+- **Owner der Haltestellen**: **VBZ**.
+- **Auftraggeber**: **VBZ + ZVV gemeinsam**.
+- **MVP-Scope**: ausschliesslich VBZ-Sites (`operatorArea = VBZ`). Weitere ZVV-Verbund-Betriebe (VBG, SZU, PostAuto …) sind im Datenmodell vorgesehen, aber nicht im MVP.
 
 ## Problem
 
@@ -48,7 +54,7 @@ Ein Tool, das GTFS + Excel-Bestandsdaten + POI-Listen kombiniert und pro Haltest
 ## Erfolgskriterien (MVP)
 
 - Planer:innen können einen vollständigen Excel-Upload in **< 2 Minuten** verarbeiten lassen.
-- Mindestens **80 %** der ZVV-/VBZ-Haltestellen aus Excel werden automatisch gegen GTFS gematcht.
+- Mindestens **80 %** der VBZ-Haltestellen aus Excel werden automatisch gegen GTFS gematcht.
 - Jede Empfehlung enthält eine **Begründung** und eine **Confidence**.
 - Empfehlungen sind **reproduzierbar**: gleicher Input → gleiches Ergebnis.
 - Karte und Empfehlung laden für einen typischen Datensatz in **< 3 Sekunden**.

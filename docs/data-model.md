@@ -1,165 +1,219 @@
 # Data Model — Haltestellensimulator
 
-Stand: **Entwurf v0** — bitte vor Implementierung der Import-Pipeline mit ZVV/VBZ abgleichen.
+Detailliertes Datenmodell des MVP. **Source of Truth ist `prisma/schema.prisma`** — dieses Dokument beschreibt *was* modelliert wird und *warum*, nicht die exakte Prisma-Syntax.
 
-Alle IDs sind Strings, alle Timestamps ISO-8601 UTC, alle Geokoordinaten WGS84.
+Alle IDs sind CUIDs (Strings). Alle Timestamps ISO-8601 UTC. Alle Geokoordinaten WGS84 als `latitude` / `longitude` (Float). PostGIS-Extension ist in der DB aktiv (`extensions = [postgis]`); Geometry-Columns werden nachgezogen, sobald wir räumliche Indizes brauchen.
 
 ---
 
 ## Übersicht
 
 ```
-ImportBatch  ─┬─► Stop  ─┬─► StopAttributes (1:1)
-              │          ├─► StopFrequency (1:1, aus GTFS abgeleitet)
-              │          ├─► StopPoiContext (1:1, aggregiert)
-              │          └─► Recommendation (1:n historisiert)
-              ├─► PoiLocation (n)
-              └─► ImportLog (1:1)
+Site ─┬─► BoardingPoint (n)
+      ├─► SiteLineAssignment (n) ─► TransitLine
+      ├─► SiteHardwareInventory (1)
+      ├─► SitePoiRelation (n)    ─► PointOfInterest
+      └─► Recommendation (n)     ─► ScoringRun
+
+ImportFile ─► ImportRun (n) ─┬─► ImportError (n)
+                              └─► ImportMapping (n)
+
+ImportFile ─► SiteHardwareInventory  (sourceImportFile)
+ImportFile ─► PointOfInterest        (sourceImportFile)
 ```
 
 ---
 
-## Entitäten
+## Modelle
 
-### `Stop` — Haltestelle (kanonisch)
+### `Site` — Haltestelle (logisches Objekt)
 
-Eine Haltestelle im ZVV-/VBZ-Sinn. **Bahnhöfe der SBB werden nicht als eigene Entität geführt** (Bahnhofsname kann als String an einem Stop hängen, aber kein eigenes Objekt).
+Eine VBZ-/ZVV-Haltestelle als planerische Einheit (z. B. "Zürich, Bellevue"). Hat sie mehrere Steige, hängen diese als `BoardingPoint` darunter.
 
-| Feld | Typ | Quelle | Beschreibung |
-|---|---|---|---|
-| `id` | string (UUID) | intern | Interner Primärschlüssel |
-| `gtfs_stop_id` | string \| null | GTFS | `stop_id` aus GTFS (z. B. `8503000:0:1`) |
-| `didok_number` | string \| null | Excel / GTFS | DiDok-Nummer (CH-Standard für ÖV-Haltestellen) |
-| `name` | string | GTFS / Excel | Anzeigename (z. B. "Zürich, Bellevue") |
-| `municipality` | string \| null | GTFS / Excel | Gemeinde |
-| `lat`, `lon` | float | GTFS | WGS84 |
-| `operator` | enum | abgeleitet | `ZVV` \| `VBZ` \| `OTHER` |
-| `external_refs` | object | Excel | freie ID-Map auf andere Systeme |
-| `created_at`, `updated_at` | timestamp | intern | |
+| Feld | Typ | Beschreibung |
+|---|---|---|
+| `id` | String (cuid) | PK |
+| `name` | String | Anzeigename |
+| `municipality` | String? | Gemeinde |
+| `didokNumber` | String? unique | DiDok-Nummer (CH-Standard für ÖV-Haltestellen) |
+| `operatorArea` | enum `OperatorArea` | `VBZ` / `ZVV` / `MIXED` / `UNKNOWN` |
+| `latitude`, `longitude` | Float | WGS84-Zentrum |
+| `notes` | String? | Freitext |
+| `createdAt`, `updatedAt` | DateTime | |
 
-Indexe: `gtfs_stop_id` unique, `didok_number` unique, räumlicher Index auf `(lat, lon)`.
+Indexe: `operatorArea`, `name`.
 
-### `StopAttributes` — Pflicht-Flags
+**Scope-Hinweis**: MVP filtert auf `operatorArea = VBZ`. Andere Werte (ZVV/MIXED) sind im Modell vorgesehen, aber nicht im MVP-Funktionsumfang.
 
-1:1 mit `Stop`. Trägt die fünf Pflichtmerkmale.
+### `BoardingPoint` — Steig
+
+Einzelner Steig / Bahnsteig einer Site. Trägt die GTFS-Verbindung.
+
+| Feld | Typ | |
+|---|---|---|
+| `siteId` | FK → Site (Cascade) | |
+| `name`, `direction` | String? | |
+| `gtfsStopId` | String? unique | aus GTFS |
+| `didokNumber` | String? | |
+| `latitude`, `longitude` | Float | |
+
+### `TransitLine` — Linie
+
+Tram-/Buslinie (z. B. Tram 11, Bus 31).
+
+| Feld | Typ | |
+|---|---|---|
+| `shortName` | String | "11", "31" |
+| `longName` | String? | |
+| `mode` | String? | tram / bus / sbahn |
+| `agencyId` | String? | |
+| `gtfsRouteId` | String? unique | |
+| `color` | String? | |
+
+### `SiteLineAssignment` — m:n Site ↔ Line
+
+Welche Linien an welcher Site halten, inkl. Frequenz pro Site.
+
+| Feld | Typ | |
+|---|---|---|
+| `siteId` | FK → Site | |
+| `lineId` | FK → TransitLine | |
+| `weekdayDepartures` | Int? | Werktagsdurchschnitt |
+| `peakHourDepartures` | Int? | HVZ-Spitze pro Stunde |
+
+Unique: `(siteId, lineId)`. Liefert dem Scoring die Frequenz pro Site (Summe über alle Linien).
+
+### `SiteHardwareInventory` — Pflicht-Flags (1:1)
+
+Die fünf Pflichtmerkmale + Notizen + Provenance.
 
 | Feld | Typ | Werte |
 |---|---|---|
-| `stop_id` | FK → Stop.id | |
-| `dfi_standfuss` | enum | `yes` \| `no` \| `unknown` |
-| `dfi_strommast` | enum | `yes` \| `no` \| `unknown` |
-| `ticketautomat` | enum | `yes` \| `no` \| `unknown` |
-| `strom` | enum | `yes` \| `no` \| `unknown` |
-| `wartehaus` | enum | `yes` \| `no` \| `unknown` |
-| `source_file` | string | Excel-Dateiname / Hash |
-| `source_row` | int \| null | Originalzeile in Excel |
-| `last_imported_at` | timestamp | |
-| `notes` | string \| null | Freitext aus Excel |
+| `siteId` | FK → Site (unique) | |
+| `dfiStandfuss` | enum `YesNoUnknown` | `YES` / `NO` / `UNKNOWN` (Default `UNKNOWN`) |
+| `dfiStrommast` | enum `YesNoUnknown` | |
+| `ticketautomat` | enum `YesNoUnknown` | |
+| `strom` | enum `YesNoUnknown` | |
+| `wartehaus` | enum `YesNoUnknown` | |
+| `notes` | String? | |
+| `recordedAt` | DateTime? | Zeitpunkt der Erhebung |
+| `sourceImportFileId` | FK → ImportFile? | Provenance |
 
-**Regel**: Fehlt ein Wert im Import → `unknown`. Niemals stillschweigend auf `no` defaulten.
+Indexe auf allen fünf Flags → schnelle Filter in der Sites-Tabelle.
 
-### `StopFrequency` — abgeleitete Frequenz
+**Regel**: Fehlt ein Wert im Import → `UNKNOWN`. Niemals stillschweigend auf `NO` defaulten.
 
-1:1 mit `Stop`. Aus GTFS berechnet, nicht editierbar.
+### `PointOfInterest` — POI / Event-Location
 
-| Feld | Typ | Beschreibung |
-|---|---|---|
-| `stop_id` | FK → Stop.id | |
-| `daily_departures` | int | Abfahrten pro Werktag |
-| `peak_departures_per_hour` | int | HVZ-Spitze |
-| `served_routes` | string[] | Linien-IDs, die hier halten |
-| `mode_mix` | object | Anteil Tram / Bus / S-Bahn etc. |
-| `computed_from_gtfs_version` | string | Quell-GTFS-Paket-Hash/-Datum |
-| `computed_at` | timestamp | |
-
-### `PoiLocation` — Point of Interest / Event-Location
-
-Eigenständige Entität, **separat von Stops importiert**. Wird beim Scoring per Geo-Radius / Walkshed an Stops zugeordnet.
-
-| Feld | Typ | Beschreibung |
-|---|---|---|
-| `id` | string (UUID) | |
-| `name` | string | |
-| `category` | enum | `shopping` \| `event_venue` \| `school` \| `hospital` \| `tourism` \| `office` \| `other` |
-| `relevance_weight` | float | 0.0–1.0, optional aus Excel; sonst Default je Kategorie |
-| `lat`, `lon` | float | WGS84 |
-| `address` | string \| null | |
-| `valid_from`, `valid_to` | date \| null | Für Events |
-| `source_file` | string | |
-| `created_at` | timestamp | |
-
-### `StopPoiContext` — aggregierter POI-Kontext pro Stop
-
-Berechnet, nicht direkt importiert.
-
-| Feld | Typ | Beschreibung |
-|---|---|---|
-| `stop_id` | FK → Stop.id | |
-| `poi_count_300m` | int | POIs im 300-m-Radius |
-| `relevance_sum_300m` | float | Summe der `relevance_weight` im 300-m-Radius |
-| `top_poi_categories` | string[] | Häufigste Kategorien im Umfeld |
-| `computed_at` | timestamp | |
-
-Radius (300 m) ist Default; konfigurierbar in `docs/scoring.md`.
-
-### `Recommendation` — Empfehlung pro Stop
-
-Historisiert (n pro Stop), damit Änderungen über die Zeit nachvollziehbar bleiben.
-
-| Feld | Typ | Werte / Beschreibung |
-|---|---|---|
-| `id` | string (UUID) | |
-| `stop_id` | FK → Stop.id | |
-| `element_size` | enum | `S` \| `M` \| `L` \| `XL` \| `XXL` |
-| `element_count` | int | ≥ 0 |
-| `hardware_class` | enum | `A_REUSE_DFI_STANDALONE` \| `B_REUSE_DFI_POLE` \| `C_REUSE_TICKET_MACHINE` \| `D_REUSE_SHELTER` \| `E_POWER_AVAILABLE_NEW_MOUNT` \| `F_NO_HARDWARE` \| `G_UNKNOWN` |
-| `score_breakdown` | object | `{ frequency: float, poi_relevance: float, infrastructure: float, ... }` |
-| `reasoning` | string[] | Menschlich lesbare Begründungs-Bullets |
-| `confidence` | float | 0.0–1.0 |
-| `rule_version` | string | Version der Scoring-Regeln (z. B. `scoring@0.3.0`) |
-| `computed_at` | timestamp | |
-| `inputs_snapshot` | object | Kopie der zur Berechnung verwendeten Inputs (für Reproduzierbarkeit) |
-
-### `ImportBatch` — Import-Vorgang
-
-Repräsentiert einen einzelnen Upload-Vorgang (Excel, GTFS oder POI).
+Eigenständige Entität, separat von Sites.
 
 | Feld | Typ | |
 |---|---|---|
-| `id` | string (UUID) | |
-| `kind` | enum | `excel_stops` \| `gtfs` \| `poi` |
-| `source_filename` | string | |
-| `source_hash` | string | SHA-256 der Originaldatei |
-| `received_at` | timestamp | |
-| `uploaded_by` | string \| null | User-Identifier (sobald Auth existiert) |
-| `status` | enum | `received` \| `validating` \| `matched` \| `persisted` \| `failed` |
+| `name` | String | |
+| `category` | String? | freier Klassifikator (z. B. "shopping", "event_venue", "school") |
+| `relevance` | enum `PoiRelevance` | `LOW` / `MEDIUM` / `HIGH` / `CRITICAL` (Default `MEDIUM`) |
+| `latitude`, `longitude` | Float | |
+| `address` | String? | |
+| `validFrom`, `validTo` | DateTime? | für Events |
+| `sourceImportFileId` | FK → ImportFile? | |
 
-### `ImportLog` — Detail-Protokoll pro Import
+### `SitePoiRelation` — m:n mit Distanz
 
-1:1 mit `ImportBatch`. Pflicht (siehe `import-pipeline.md`).
+Berechnete Zuordnung POI ↔ Site mit Distanz. Wird im Scoring-Run aktualisiert (Default-Radius 300 m).
 
 | Feld | Typ | |
 |---|---|---|
-| `batch_id` | FK → ImportBatch.id | |
-| `rows_total` | int | |
-| `rows_accepted` | int | |
-| `rows_rejected` | int | |
-| `rejections` | object[] | `{ row, reason, raw }` |
-| `stops_matched` | int | Nur bei `excel_stops` |
-| `stops_unmatched` | int | Nur bei `excel_stops` |
-| `duration_ms` | int | |
-| `notes` | string[] | |
+| `siteId`, `poiId` | FK | unique zusammen |
+| `distanceMeters` | Float | |
+| `computedAt` | DateTime | |
+
+### `Recommendation` — Empfehlung
+
+Historisiert (n pro Site). Jede Empfehlung gehört zu einem `ScoringRun`.
+
+| Feld | Typ | Werte |
+|---|---|---|
+| `siteId` | FK → Site | |
+| `scoringRunId` | FK → ScoringRun | |
+| `elementSize` | enum `ElementSize` | `S` / `M` / `L` / `XL` / `XXL` |
+| `elementCount` | Int | ≥ 0 |
+| `hardwareClass` | enum `HardwareIntegrationClass` | `A_REUSE_DFI_STANDALONE` … `G_UNKNOWN` |
+| `scoreBreakdown` | Json | `{ frequency, poiRelevance, infrastructure, ... }` |
+| `reasoning` | String[] | menschlich lesbare Begründung |
+| `confidence` | Float | 0..1 |
+| `inputsSnapshot` | Json | Kopie der Inputs zur Reproduzierbarkeit |
+| `ruleVersion` | String | z. B. `scoring@0.3.0` |
+| `computedAt` | DateTime | |
+
+Index: `(siteId, computedAt DESC)` für "neueste Empfehlung pro Site".
+
+### `ScoringRun` — Lauf der Scoring-Engine
+
+| Feld | Typ | |
+|---|---|---|
+| `ruleVersion` | String | |
+| `startedAt`, `finishedAt` | DateTime | |
+| `siteCount` | Int? | |
+| `triggeredBy` | String? | |
+| `parameters` | Json? | falls Default-Schwellwerte überschrieben |
 
 ---
 
-## Enums (zentral)
+## Import-Modelle
+
+### `ImportFile` — physische Datei
+
+| Feld | Typ | |
+|---|---|---|
+| `importType` | enum `ImportType` | |
+| `originalFilename` | String | |
+| `storedPath` | String | relativ zu `STORAGE_ROOT` |
+| `mimeType` | String? | |
+| `sizeBytes` | Int | |
+| `contentHash` | String unique | SHA-256 → Idempotenz |
+| `uploadedAt`, `uploadedBy` | | |
+
+### `ImportRun` — ein Verarbeitungsversuch
+
+Eine `ImportFile` kann mehrfach verarbeitet werden (Re-Import nach Fix).
+
+| Feld | Typ | |
+|---|---|---|
+| `fileId` | FK → ImportFile | |
+| `status` | enum `ImportStatus` | `UPLOADED` / `PROCESSING` / `COMPLETED` / `FAILED` / `NEEDS_REVIEW` |
+| `startedAt`, `finishedAt` | | |
+| `rowsTotal`, `rowsAccepted`, `rowsRejected` | Int? | |
+| `summary` | Json? | freie Counters je Importtyp |
+
+### `ImportError` — fehlerhafte Zeile
+
+| Feld | Typ | |
+|---|---|---|
+| `runId` | FK → ImportRun | |
+| `rowNumber` | Int? | |
+| `field` | String? | |
+| `reason` | String | |
+| `rawValue` | String? | |
+
+### `ImportMapping` — Spaltenmapping
+
+Welche Quell-Spalte (z. B. `DFI Mast`) auf welches Zielfeld (`dfiStrommast`) gemappt wurde — pro Run.
+
+| Feld | Typ | |
+|---|---|---|
+| `runId` | FK → ImportRun | unique zusammen mit `sourceColumn` |
+| `sourceColumn` | String | |
+| `targetField` | String | |
+| `transform` | String? | optional |
+
+---
+
+## Enums
 
 ```ts
-type YesNoUnknown = "yes" | "no" | "unknown";
-
-type ElementSize = "S" | "M" | "L" | "XL" | "XXL";
-
-type HardwareClass =
+type YesNoUnknown             = "YES" | "NO" | "UNKNOWN";
+type ElementSize              = "S" | "M" | "L" | "XL" | "XXL";
+type HardwareIntegrationClass =
   | "A_REUSE_DFI_STANDALONE"
   | "B_REUSE_DFI_POLE"
   | "C_REUSE_TICKET_MACHINE"
@@ -167,26 +221,35 @@ type HardwareClass =
   | "E_POWER_AVAILABLE_NEW_MOUNT"
   | "F_NO_HARDWARE"
   | "G_UNKNOWN";
-
-type Operator = "ZVV" | "VBZ" | "OTHER";
+type ImportStatus = "UPLOADED" | "PROCESSING" | "COMPLETED" | "FAILED" | "NEEDS_REVIEW";
+type ImportType   =
+  | "GTFS_STATIC"
+  | "HARDWARE_INVENTORY"
+  | "POI_EVENT_LOCATIONS"
+  | "PASSENGER_COUNTS"
+  | "MANUAL_SITE_ATTRIBUTES"
+  | "OTHER";
+type OperatorArea = "VBZ" | "ZVV" | "MIXED" | "UNKNOWN";
+type PoiRelevance = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 ```
 
 ---
 
-## Persistenz im MVP
+## Persistenz
 
-- Lokale Dateien unter `storage/processed/`:
-  - `stops.json` — kanonische Stops + Attribute
-  - `frequencies.json` — abgeleitet aus GTFS
-  - `pois.json`
-  - `recommendations/<batch_id>.json` — historische Empfehlungs-Snapshots
-  - `import-log.jsonl` — append-only Log
-- **Keine DB im MVP**. SQLite oder DuckDB als Optionen für Phase 3+.
+PostgreSQL 16 + PostGIS 3.x via Prisma (siehe `architecture.md`, `setup.md`).
+
+- Original-Dateien bleiben unter `storage/uploads/<kind>/<contentHash>__<filename>`.
+- Verarbeitete Daten landen in der DB.
+- Zusätzlich Append-only File-Audit unter `storage/processed/import-log.jsonl` (siehe `import-pipeline.md`).
+- Keine Cloud-Buckets im MVP — Storage-Adapter erlaubt späteren Wechsel auf Supabase Storage oder S3.
 
 ---
 
 ## Offene Fragen
 
-- Welche **exakten Spaltennamen** liefert ZVV/VBZ im Excel? → muss vor Import-Pipeline-Implementierung geklärt sein.
-- Wie wird der **Operator** (`ZVV` vs `VBZ`) abgeleitet — aus Linien-Zuordnung oder aus Excel-Feld?
-- Wird **DiDok** durchgängig geliefert oder müssen wir tolerant gegen fehlende DiDoks sein?
+- **Exakte Excel-Spaltennamen** von VBZ → werden über `ImportMapping` festgehalten, sobald Beispieldaten vorliegen.
+- **OperatorArea-Ableitung** für Sites mit Linien von VBZ + ZVV-Drittbetrieben: ab welcher Mischung wird `MIXED` korrekt, wann bleibt `VBZ`?
+- **PoiRelevance-Mapping**: Wer entscheidet `LOW`/`MEDIUM`/`HIGH`/`CRITICAL`? Default je Kategorie definieren.
+- **DiDok-Vollständigkeit**: durchgängig vorhanden oder tolerantes Matching nötig?
+- **POI ohne Koordinaten**: aktuell sind `latitude/longitude` non-nullable. Bei häufigen Adress-only Imports ggf. nullable machen.
