@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { getStorage } from "@/lib/storage";
 import type { StorageKind } from "@/lib/storage";
 import { ImportType, type ImportType as ImportTypeT } from "@/types/domain";
+import { runGtfsImport } from "./parsers/gtfs";
 import { runHardwareInventoryImport } from "./parsers/hardware-inventory";
 
 const IMPORT_TYPE_TO_STORAGE_KIND: Record<ImportTypeT, StorageKind> = {
@@ -99,14 +100,19 @@ export async function uploadImportFile(
   // For known parsers, run synchronously after upload. Failures are
   // recorded on the ImportRun itself, so we don't surface them as
   // action errors here.
-  if (!duplicate && importType === "HARDWARE_INVENTORY") {
+  if (!duplicate) {
+    const parserArgs = {
+      runId: run.id,
+      fileId,
+      storedPath: stored.storedPath,
+      originalFilename: file.name || "upload",
+    };
     try {
-      await runHardwareInventoryImport({
-        runId: run.id,
-        fileId,
-        storedPath: stored.storedPath,
-        originalFilename: file.name || "upload",
-      });
+      if (importType === "HARDWARE_INVENTORY") {
+        await runHardwareInventoryImport(parserArgs);
+      } else if (importType === "GTFS_STATIC") {
+        await runGtfsImport(parserArgs);
+      }
     } catch {
       // ImportRun.status was already set to FAILED by the parser.
     }
