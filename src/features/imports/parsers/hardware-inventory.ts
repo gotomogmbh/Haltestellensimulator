@@ -220,8 +220,7 @@ async function readExcel(buffer: Buffer): Promise<unknown[][]> {
   const wb = new ExcelJS.Workbook();
   // ExcelJS's `load` signature lags behind @types/node — its Buffer type
   // doesn't know about the newer generic. Runtime is fine.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await wb.xlsx.load(buffer as any);
+  await wb.xlsx.load(buffer as unknown as Parameters<typeof wb.xlsx.load>[0]);
   const sheet = wb.worksheets[0];
   if (!sheet) return [];
   const rows: unknown[][] = [];
