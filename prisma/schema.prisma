@@ -87,9 +87,13 @@ model Site {
   name              String
   municipality      String?
   didokNumber       String?                @unique
+  sloid             String?                @unique
+  zvvStopId         String?                @unique
+  vbzStopId         String?                @unique
   operatorArea      OperatorArea           @default(UNKNOWN)
-  latitude          Float
-  longitude         Float
+  needsReview       Boolean                @default(false)
+  latitude          Float?
+  longitude         Float?
   notes             String?
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
@@ -101,7 +105,9 @@ model Site {
   recommendations   Recommendation[]
 
   @@index([operatorArea])
+  @@index([needsReview])
   @@index([name])
+  @@index([name, municipality])
 }
 
 model BoardingPoint {
