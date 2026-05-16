@@ -20,7 +20,11 @@ Zentrale Projektanweisung für Claude Code. Dieses File ist die **Single Source 
 
 ## Projektkontext
 
-Wir bauen eine Web-App für **ZVV-/VBZ-Haltestellen** zur **Planung eines neuen modularen Fahrgastinformationskonzepts**.
+Wir bauen eine Web-App für **VBZ-Haltestellen** zur **Planung eines neuen modularen Fahrgastinformationskonzepts**.
+
+- **Owner der Haltestellen**: **VBZ** (Verkehrsbetriebe Zürich)
+- **Auftraggeber**: **VBZ + ZVV gemeinsam**
+- **MVP**: nur VBZ-Stops; Datenmodell sieht weitere ZVV-Verbund-Betriebe (VBG, SZU, PostAuto …) vor, sind aber nicht im MVP
 
 Die App unterstützt Planer:innen dabei, pro Haltestelle eine begründete Empfehlung zu erzeugen:
 

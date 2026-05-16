@@ -1,8 +1,12 @@
 # Haltestellensimulator
 
-Web-App zur Planung und Bewertung modularer **Fahrgastinformations-Elemente (FGI)** an ZVV-/VBZ-Haltestellen.
+Web-App zur Planung und Bewertung modularer **Fahrgastinformations-Elemente (FGI)** an **VBZ-Haltestellen**.
 
-Die App unterstützt das ZVV-/VBZ-Team dabei, pro Haltestelle eine begründete Empfehlung zu treffen:
+- **Owner der Haltestellen**: VBZ (Verkehrsbetriebe Zürich)
+- **Auftraggeber**: VBZ + ZVV gemeinsam
+- **MVP-Scope**: ausschliesslich VBZ-Haltestellen; weitere ZVV-Verbund-Betriebe (VBG, SZU, PostAuto …) sind im Datenmodell vorgesehen, aber nicht im MVP
+
+Die App unterstützt das VBZ-/ZVV-Team dabei, pro Haltestelle eine begründete Empfehlung zu treffen:
 
 - welche **Elementgrösse** (S, M, L, XL, XXL) sinnvoll ist,
 - wie viele **Elemente** voraussichtlich nötig sind,
@@ -36,6 +40,16 @@ Jede Haltestelle wird mit fünf Status-Flags geführt (`yes` / `no` / `unknown`)
 
 Aus diesen Flags + GTFS-Frequenz + POI-Kontext leitet die App die Empfehlung ab (siehe `docs/scoring.md`).
 
+## Tech-Stack
+
+- **Next.js + TypeScript** (App Router)
+- **PostgreSQL 16 + PostGIS 3.x**
+- **Prisma** (ORM, PostGIS-Geometrie via `Unsupported(...)` + `$queryRaw`)
+- **MapLibre GL** + **OpenFreeMap** (Vector Tiles, OSM-basiert)
+- Lokaler Upload-Storage `storage/uploads/` über `StorageAdapter`-Interface (später Supabase/S3 möglich)
+
+Details und Begründungen in `docs/architecture.md`.
+
 ## Projektstruktur
 
 ```
@@ -44,6 +58,7 @@ Aus diesen Flags + GTFS-Frequenz + POI-Kontext leitet die App die Empfehlung ab 
 ├── CLAUDE.md                  # Arbeitskontext für Claude-Sessions
 ├── .env.example               # Vorlage für lokale Env-Variablen
 ├── docs/
+│   ├── architecture.md        # Technische MVP-Architektur (Stack, Struktur, API)
 │   ├── concept.md             # Vision, Scope, Nutzer:innen
 │   ├── data-model.md          # Entitäten, Felder, Beziehungen
 │   ├── import-pipeline.md     # Upload → Validate → Match → Persist
@@ -62,12 +77,13 @@ Aus diesen Flags + GTFS-Frequenz + POI-Kontext leitet die App die Empfehlung ab 
 
 ## Setup
 
-Tech-Stack ist noch nicht festgelegt — wird in `docs/mvp-roadmap.md` Phase 1 entschieden. Empfehlung: Vite + React + TypeScript (konsistent mit übrigen Gotomo-Projekten).
-
 ```bash
 git clone https://github.com/gotomogmbh/Haltestellensimulator
 cd Haltestellensimulator
 cp .env.example .env
+# Datenbank lokal starten (sobald docker-compose vorhanden):
+# docker compose up -d
+# pnpm install && pnpm prisma migrate dev && pnpm dev
 ```
 
 ## Repository
