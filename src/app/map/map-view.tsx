@@ -114,10 +114,46 @@ export default function MapView({ styleUrl, attribution }: Props) {
           data: "/api/map/pois",
         });
 
+        // Radius-Ringe ZUERST, damit die POI-Kreise später drüberliegen.
+        map.addLayer({
+          id: "pois-radius-fill",
+          type: "fill",
+          source: "pois",
+          filter: ["==", ["geometry-type"], "Polygon"] as unknown as ExpressionSpecification,
+          paint: {
+            "fill-color": [
+              "match",
+              ["get", "relevance"],
+              ...Object.entries(POI_COLORS).flatMap(([k, v]) => [k, v]),
+              "#f59e0b",
+            ] as unknown as ExpressionSpecification,
+            "fill-opacity": 0.08,
+          },
+        });
+
+        map.addLayer({
+          id: "pois-radius-line",
+          type: "line",
+          source: "pois",
+          filter: ["==", ["geometry-type"], "Polygon"] as unknown as ExpressionSpecification,
+          paint: {
+            "line-color": [
+              "match",
+              ["get", "relevance"],
+              ...Object.entries(POI_COLORS).flatMap(([k, v]) => [k, v]),
+              "#f59e0b",
+            ] as unknown as ExpressionSpecification,
+            "line-width": 1.5,
+            "line-opacity": 0.65,
+            "line-dasharray": [3, 2],
+          },
+        });
+
         map.addLayer({
           id: "pois-circles",
           type: "circle",
           source: "pois",
+          filter: ["==", ["geometry-type"], "Point"] as unknown as ExpressionSpecification,
           paint: {
             "circle-radius": 9,
             "circle-color": [
@@ -166,8 +202,14 @@ export default function MapView({ styleUrl, attribution }: Props) {
     const map = mapRef.current;
     if (!map || !ready) return;
     const visibility = poisVisible ? "visible" : "none";
-    if (map.getLayer("pois-circles")) {
-      map.setLayoutProperty("pois-circles", "visibility", visibility);
+    for (const id of [
+      "pois-circles",
+      "pois-radius-line",
+      "pois-radius-fill",
+    ]) {
+      if (map.getLayer(id)) {
+        map.setLayoutProperty(id, "visibility", visibility);
+      }
     }
   }, [poisVisible, ready]);
 
