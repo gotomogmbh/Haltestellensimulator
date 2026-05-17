@@ -349,3 +349,16 @@ p {
   font-weight: 500;
   font-size: 0.82rem;
 }
+
+.dist-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem 1.5rem;
+  margin-top: 0.75rem;
+}
+
+.dist-grid h3 {
+  margin-top: 0;
+  font-size: 0.95rem;
+  color: #4a4a4a;
+}
