@@ -84,8 +84,9 @@ export default async function SitesPage({
               <th>Name</th>
               <th>Gemeinde</th>
               <th>Gebiet</th>
-              <th>HW-Inventar</th>
-              <th>Externe IDs</th>
+              <th>Empfehlung</th>
+              <th>Confidence</th>
+              <th>Inventar</th>
               <th>Aktualisiert</th>
               <th>Review</th>
             </tr>
@@ -98,6 +99,7 @@ export default async function SitesPage({
                     (v) => v !== "UNKNOWN",
                   ).length
                 : 0;
+              const rec = site.recommendations[0];
               return (
                 <tr key={site.id}>
                   <td>
@@ -110,6 +112,21 @@ export default async function SitesPage({
                     </span>
                   </td>
                   <td>
+                    {rec ? (
+                      <div className="rec-cell">
+                        <strong>
+                          {rec.elementSize} × {rec.elementCount}
+                        </strong>
+                        <code title={rec.hardwareClass}>{rec.hardwareClass}</code>
+                      </div>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
+                  <td>
+                    {rec ? <ConfidenceBadge value={rec.confidence} /> : <span className="muted">—</span>}
+                  </td>
+                  <td>
                     {hw ? (
                       <span title="Bekannte Pflichtflags / 5">
                         {knownCount} / 5
@@ -117,13 +134,6 @@ export default async function SitesPage({
                     ) : (
                       <span className="muted">—</span>
                     )}
-                  </td>
-                  <td className="ids">
-                    {[site.sloid, site.zvvStopId, site.vbzStopId, site.didokNumber]
-                      .filter(Boolean)
-                      .map((id) => (
-                        <code key={id}>{id}</code>
-                      ))}
                   </td>
                   <td>{formatDate(site.updatedAt)}</td>
                   <td>
@@ -145,4 +155,10 @@ export default async function SitesPage({
 
 function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+function ConfidenceBadge({ value }: { value: number }) {
+  const cls =
+    value >= 0.8 ? "conf-high" : value >= 0.5 ? "conf-mid" : "conf-low";
+  return <span className={`conf-badge ${cls}`}>{value.toFixed(2)}</span>;
 }

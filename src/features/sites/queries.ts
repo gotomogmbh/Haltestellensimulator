@@ -41,6 +41,16 @@ export async function listSites(params: SiteListParams = {}) {
           updatedAt: true,
         },
       },
+      recommendations: {
+        take: 1,
+        orderBy: { computedAt: "desc" },
+        select: {
+          elementSize: true,
+          elementCount: true,
+          hardwareClass: true,
+          confidence: true,
+        },
+      },
     },
   });
 }

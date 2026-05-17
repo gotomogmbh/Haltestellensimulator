@@ -541,3 +541,33 @@ p {
   padding: 0.7rem 0.9rem !important;
   border-radius: 8px !important;
 }
+
+.rec-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  line-height: 1.2;
+}
+
+.rec-cell strong {
+  font-size: 0.92rem;
+  font-weight: 500;
+}
+
+.rec-cell code {
+  font-size: 0.72rem;
+  color: #6a6a6a;
+}
+
+.conf-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.conf-high { background: #dcfce7; color: #14532d; }
+.conf-mid  { background: #fef9c3; color: #713f12; }
+.conf-low  { background: #fee2e2; color: #991b1b; }
