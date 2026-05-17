@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { getSite } from "@/features/sites/queries";
-import type { YesNoUnknown } from "@/types/domain";
+import { ScoreBreakdown, type YesNoUnknown } from "@/types/domain";
 
 export const dynamic = "force-dynamic";
 
@@ -147,16 +147,47 @@ export default async function SiteDetailPage({
 
       <h2 className="section-h">Empfehlung</h2>
       {recommendation ? (
-        <div className="detail-grid">
-          <DetailRow label="Grösse" value={recommendation.elementSize} />
-          <DetailRow label="Anzahl" value={String(recommendation.elementCount)} />
-          <DetailRow label="HW-Klasse" value={recommendation.hardwareClass} mono />
-          <DetailRow
-            label="Confidence"
-            value={recommendation.confidence.toFixed(2)}
-          />
-          <DetailRow label="Rule-Version" value={recommendation.ruleVersion} mono />
-        </div>
+        <>
+          <div className="detail-grid">
+            <DetailRow label="Grösse" value={recommendation.elementSize} />
+            <DetailRow
+              label="Anzahl"
+              value={String(recommendation.elementCount)}
+            />
+            <DetailRow
+              label="HW-Klasse"
+              value={recommendation.hardwareClass}
+              mono
+            />
+            <DetailRow
+              label="Confidence"
+              value={recommendation.confidence.toFixed(2)}
+            />
+            <DetailRow
+              label="Rule-Version"
+              value={recommendation.ruleVersion}
+              mono
+            />
+            <DetailRow
+              label="Berechnet"
+              value={formatDateTime(recommendation.computedAt)}
+            />
+          </div>
+
+          {recommendation.reasoning.length > 0 && (
+            <>
+              <h3 className="section-h">Begründung</h3>
+              <ul className="reasoning-list">
+                {recommendation.reasoning.map((line, i) => (
+                  <li key={i}>{line}</li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          <h3 className="section-h">Score-Aufteilung</h3>
+          <ScoreBreakdownView breakdown={recommendation.scoreBreakdown} />
+        </>
       ) : (
         <p className="muted">Noch keine Empfehlung berechnet.</p>
       )}
@@ -190,4 +221,52 @@ function FlagBadge({ value }: { value: YesNoUnknown }) {
   const cls =
     value === "YES" ? "flag-yes" : value === "NO" ? "flag-no" : "flag-unknown";
   return <span className={`flag-badge ${cls}`}>{label}</span>;
+}
+
+function formatDateTime(d: Date | null | undefined): string | null {
+  if (!d) return null;
+  return d.toISOString().slice(0, 19).replace("T", " ");
+}
+
+const SCORE_BARS: ReadonlyArray<{
+  key: "frequency" | "poiRelevance" | "infrastructure";
+  label: string;
+}> = [
+  { key: "frequency", label: "Frequenz" },
+  { key: "poiRelevance", label: "POI-Relevanz" },
+  { key: "infrastructure", label: "Infrastruktur" },
+];
+
+function ScoreBreakdownView({ breakdown }: { breakdown: unknown }) {
+  const parsed = ScoreBreakdown.safeParse(breakdown);
+  if (!parsed.success) {
+    return <p className="muted">Score-Aufteilung nicht lesbar.</p>;
+  }
+  const b = parsed.data;
+  return (
+    <div className="score-grid">
+      {SCORE_BARS.map(({ key, label }) => (
+        <div key={key} className="score-row">
+          <span className="score-label">{label}</span>
+          <div className="score-track">
+            <div
+              className="score-fill"
+              style={{ width: `${Math.round(b[key] * 100)}%` }}
+            />
+          </div>
+          <span className="score-value">{b[key].toFixed(2)}</span>
+        </div>
+      ))}
+      <div className="score-row score-row-total">
+        <span className="score-label">Gewichtet (50/30/20)</span>
+        <div className="score-track">
+          <div
+            className="score-fill score-fill-total"
+            style={{ width: `${Math.round(b.weightedTotal * 100)}%` }}
+          />
+        </div>
+        <span className="score-value">{b.weightedTotal.toFixed(2)}</span>
+      </div>
+    </div>
+  );
 }
