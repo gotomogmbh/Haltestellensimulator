@@ -14,6 +14,7 @@ import { prisma } from "../src/lib/db";
 import { runGtfsImport } from "../src/features/imports/parsers/gtfs";
 import { runGtfsLinesImport } from "../src/features/imports/parsers/gtfs-lines";
 import { runHardwareInventoryImport } from "../src/features/imports/parsers/hardware-inventory";
+import { runPoiImport } from "../src/features/imports/parsers/poi";
 
 const fileId = process.argv[2];
 const step = process.argv[3] ?? "stops";
@@ -67,6 +68,11 @@ async function main() {
 
   if (file.importType === "HARDWARE_INVENTORY") {
     await runStep("hardware-inventory", runHardwareInventoryImport);
+    return;
+  }
+
+  if (file.importType === "POI_EVENT_LOCATIONS") {
+    await runStep("poi", runPoiImport);
     return;
   }
 

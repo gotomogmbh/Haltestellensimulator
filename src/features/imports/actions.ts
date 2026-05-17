@@ -8,6 +8,7 @@ import type { StorageKind } from "@/lib/storage";
 import { ImportType, type ImportType as ImportTypeT } from "@/types/domain";
 import { runGtfsImport } from "./parsers/gtfs";
 import { runHardwareInventoryImport } from "./parsers/hardware-inventory";
+import { runPoiImport } from "./parsers/poi";
 
 const IMPORT_TYPE_TO_STORAGE_KIND: Record<ImportTypeT, StorageKind> = {
   GTFS_STATIC: "gtfs",
@@ -112,6 +113,8 @@ export async function uploadImportFile(
         await runHardwareInventoryImport(parserArgs);
       } else if (importType === "GTFS_STATIC") {
         await runGtfsImport(parserArgs);
+      } else if (importType === "POI_EVENT_LOCATIONS") {
+        await runPoiImport(parserArgs);
       }
     } catch {
       // ImportRun.status was already set to FAILED by the parser.
